@@ -42,7 +42,7 @@ services:
       - EMBEDDING_MODEL=${EMBEDDING_MODEL:-}
       - EMBEDDING_API_KEY=${EMBEDDING_API_KEY:-}
       - FASTEMBED_MODEL=${FASTEMBED_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
-      - FASTEMBED_CACHE_PATH=${FASTEMBED_CACHE_PATH:-}
+      - FASTEMBED_CACHE_PATH=${FASTEMBED_CACHE_PATH:-/app/data/fastembed_cache}
       - CLEANUP_INTERVAL_HOURS=${CLEANUP_INTERVAL_HOURS:-24}
       - ODYSSEUS_INPROCESS_POLLERS=${ODYSSEUS_INPROCESS_POLLERS:-1}
       - ODYSSEUS_INPROCESS_TASKS=${ODYSSEUS_INPROCESS_TASKS:-1}
@@ -53,6 +53,11 @@ services:
       - GOOGLE_PSE_CX=${GOOGLE_PSE_CX:-}
       - TAVILY_API_KEY=${TAVILY_API_KEY:-}
       - SERPER_API_KEY=${SERPER_API_KEY:-}
+      # Keep npm/npx and Playwright browser downloads under the persisted
+      # /app/.local bind mount so built-in Browser MCP survives recreates.
+      - HOME=/app
+      - NPM_CONFIG_CACHE=/app/.local/npm-cache
+      - PLAYWRIGHT_BROWSERS_PATH=/app/.local/ms-playwright
       # PUID / PGID — the user/group the container drops to before
       # running uvicorn (entrypoint also chowns /app/data + /app/logs
       # to match, so bind-mounted files stay editable from the host).

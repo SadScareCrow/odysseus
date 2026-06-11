@@ -6,6 +6,8 @@ FROM python:3.12-slim
 # git/cmake are required when Cookbook builds llama.cpp on first llama.cpp
 # launch inside Docker.
 # nodejs/npm provide npx for the optional built-in Browser MCP server.
+# Playwright/Chromium libraries let the optional Browser MCP launch headless
+# Chromium instead of failing at runtime with missing shared libraries.
 # gosu lets the entrypoint drop privileges cleanly so signals still reach
 # uvicorn directly (no extra shell layer like `su`/`sudo` would add).
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -13,11 +15,44 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     cmake \
     curl \
     git \
+    wget \
     nodejs \
     npm \
     tmux \
     openssh-client \
     gosu \
+    libasound2t64 \
+    libatk-bridge2.0-0t64 \
+    libatk1.0-0t64 \
+    libatspi2.0-0t64 \
+    libcairo2 \
+    libcups2t64 \
+    libdbus-1-3 \
+    libdrm2 \
+    libgbm1 \
+    libglib2.0-0t64 \
+    libnspr4 \
+    libnss3 \
+    libpango-1.0-0 \
+    libx11-6 \
+    libxcb1 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxext6 \
+    libxfixes3 \
+    libxkbcommon0 \
+    libxrandr2 \
+    xvfb \
+    fonts-noto-color-emoji \
+    fonts-unifont \
+    libfontconfig1 \
+    libfreetype6 \
+    xfonts-scalable \
+    fonts-liberation \
+    fonts-ipafont-gothic \
+    fonts-wqy-zenhei \
+    fonts-tlwg-loma-otf \
+    fonts-freefont-ttf \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
