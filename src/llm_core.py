@@ -418,6 +418,12 @@ def _build_ollama_payload(
         payload["options"] = options
     if tools:
         payload["tools"] = tools
+        # Native Ollama thinking models can spend the entire response in the
+        # thinking channel and terminate without a usable tool call. Match the
+        # /v1 compatibility path: suppress thinking only for tool rounds so the
+        # model emits its native function call in message.tool_calls.
+        if _supports_thinking(model):
+            payload["think"] = False
     return payload
 
 

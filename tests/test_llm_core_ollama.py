@@ -105,6 +105,38 @@ def test_ollama_payload_leaves_plain_messages_untouched():
     assert payload["messages"][0] == {"role": "user", "content": "hello"}
 
 
+def test_native_ollama_thinking_model_disables_thinking_for_tool_rounds():
+    tools = [{
+        "type": "function",
+        "function": {
+            "name": "steam_library",
+            "description": "Read a Steam library",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    }]
+
+    payload = llm_core._build_ollama_payload(
+        "gemma4:12b",
+        [{"role": "user", "content": "Use the tool"}],
+        temperature=0.0,
+        max_tokens=0,
+        tools=tools,
+    )
+
+    assert payload["think"] is False
+
+
+def test_native_ollama_plain_chat_keeps_thinking_default():
+    payload = llm_core._build_ollama_payload(
+        "gemma4:12b",
+        [{"role": "user", "content": "Think about this"}],
+        temperature=0.0,
+        max_tokens=0,
+    )
+
+    assert "think" not in payload
+
+
 def test_ollama_payload_tolerates_malformed_arguments():
     msgs = [{
         "role": "assistant",

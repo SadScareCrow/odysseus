@@ -8,6 +8,7 @@ The LLM decides when to use tools by writing fenced code blocks.
 
 import asyncio
 import collections
+import copy
 import json
 import re
 import time
@@ -632,6 +633,107 @@ _ADMIN_SCHEMA_NAMES = frozenset([
     "ask_teacher", "list_models", "search_chats",
 ])
 _TOOL_SELECTION_TIMEOUT_SECONDS = 1.5
+
+
+def _safe_native_tool_alias(value: str, fallback: str) -> str:
+    """Return a model-friendly OpenAI function name."""
+    name = re.sub(r"[^A-Za-z0-9_]+", "_", str(value or "")).strip("_")
+    if not name:
+        name = fallback
+    if not re.match(r"^[A-Za-z_]", name):
+        name = f"tool_{name}"
+    return name[:64]
+
+
+def _alias_mcp_schemas_for_model(all_tool_schemas: List[Dict]) -> tuple[List[Dict], Dict[str, str]]:
+    """Expose MCP tools under short function names and map them back internally.
+
+    Odysseus routes MCP calls with qualified names (`mcp__server__tool`), but
+    some otherwise tool-capable local models struggle to emit those names. The
+    schema sent to the model can use a friendlier alias while execution still
+    receives the original qualified name.
+    """
+    if not all_tool_schemas:
+        return all_tool_schemas, {}
+
+    builtin_names = {
+        s.get("function", {}).get("name")
+        for s in all_tool_schemas
+        if not str(s.get("function", {}).get("name", "")).startswith("mcp__")
+    }
+    raw_counts: Dict[str, int] = collections.Counter()
+    mcp_infos: Dict[str, tuple[str, str]] = {}
+
+    for schema in all_tool_schemas:
+        qualified = str(schema.get("function", {}).get("name", "") or "")
+        if not qualified.startswith("mcp__"):
+            continue
+        parts = qualified.split("__", 2)
+        if len(parts) != 3 or not parts[2]:
+            continue
+        server_id, raw_name = parts[1], parts[2]
+        raw_counts[raw_name] += 1
+        mcp_infos[qualified] = (server_id, raw_name)
+
+    if not mcp_infos:
+        return all_tool_schemas, {}
+
+    used = {n for n in builtin_names if n}
+    aliases: Dict[str, str] = {}
+    aliased_schemas: List[Dict] = []
+
+    for schema in all_tool_schemas:
+        qualified = str(schema.get("function", {}).get("name", "") or "")
+        info = mcp_infos.get(qualified)
+        if not info:
+            aliased_schemas.append(schema)
+            continue
+
+        server_id, raw_name = info
+        if raw_counts[raw_name] == 1 and raw_name not in used:
+            alias = _safe_native_tool_alias(raw_name, f"mcp_{server_id}_{raw_name}")
+        else:
+            alias = _safe_native_tool_alias(f"mcp_{server_id}_{raw_name}", f"mcp_{server_id}")
+        base_alias = alias
+        suffix = 2
+        while alias in used:
+            trim = 64 - len(str(suffix)) - 1
+            alias = f"{base_alias[:trim]}_{suffix}"
+            suffix += 1
+        used.add(alias)
+        aliases[alias] = qualified
+
+        rewritten = copy.deepcopy(schema)
+        fn = rewritten.setdefault("function", {})
+        fn["name"] = alias
+        aliased_schemas.append(rewritten)
+
+    return aliased_schemas, aliases
+
+
+def _messages_with_mcp_alias_guidance(messages: List[Dict], aliases: Dict[str, str]) -> List[Dict]:
+    """Return a transient message list that aligns MCP prompt names with schemas."""
+    if not aliases:
+        return messages
+    alias_lines = []
+    for alias, qualified in sorted(aliases.items()):
+        raw_name = qualified.split("__", 2)[-1]
+        alias_lines.append(f"- `{alias}` calls the MCP `{raw_name}` tool.")
+    note = (
+        "The native function schemas for MCP tools use short callable names. "
+        "When using MCP tools, call these short function names exactly:\n"
+        + "\n".join(alias_lines)
+        + "\nOmit optional account/user ID fields when the configured server default should be used. "
+        "Never pass placeholder strings such as `STEAM_ID` as tool arguments."
+    )
+    if not messages:
+        return [{"role": "system", "content": note}]
+    out = [dict(m) for m in messages]
+    if out[0].get("role") == "system":
+        out[0]["content"] = (out[0].get("content") or "") + "\n\n" + note
+    else:
+        out.insert(0, {"role": "system", "content": note})
+    return out
 
 
 def _is_ollama_openai_compat_url(endpoint_url: str) -> bool:
@@ -1465,15 +1567,22 @@ def _build_base_prompt(
 
 
 
-def _resolve_tool_blocks(round_response: str, native_tool_calls: list, round_num: int, is_api_model: bool = False):
+def _resolve_tool_blocks(
+    round_response: str,
+    native_tool_calls: list,
+    round_num: int,
+    is_api_model: bool = False,
+    tool_aliases: Optional[Dict[str, str]] = None,
+):
     """Choose native function calls or fenced code block parsing. Returns (tool_blocks, used_native)."""
     used_native = False
     if native_tool_calls:
         tool_blocks = []
         for tc in native_tool_calls:
             tc_name = tc.get("name", "")
+            mapped_name = (tool_aliases or {}).get(tc_name, tc_name)
             tc_args = tc.get("arguments", "{}")
-            block = function_call_to_tool_block(tc_name, tc_args)
+            block = function_call_to_tool_block(mapped_name, tc_args)
             if block:
                 tool_blocks.append(block)
                 logger.info(f"  -> converted: {tc_name} -> {block.tool_type}")
@@ -2283,6 +2392,7 @@ async def stream_agent_loop(
         round_response = ""
         round_reasoning = ""  # reasoning_content deltas (DeepSeek-thinking, vLLM --reasoning-parser)
         native_tool_calls = []  # populated if model uses function calling
+        _mcp_tool_aliases = {}
         # Reset doc streaming state per round
         _doc_acc = ""
         _doc_opened = False
@@ -2333,11 +2443,13 @@ async def stream_agent_loop(
                     if t.get("function", {}).get("name") not in disabled_tools
                     and t.get("name") not in disabled_tools
                 ]
+            all_tool_schemas, _mcp_tool_aliases = _alias_mcp_schemas_for_model(all_tool_schemas)
         else:
             # Local: only MCP schemas when message suggests MCP tool usage
             _last_content = _last_user.lower()
             _wants_mcp = any(kw in _last_content for kw in _MCP_KEYWORDS)
             all_tool_schemas = mcp_schemas if (_wants_mcp and mcp_schemas) else []
+            all_tool_schemas, _mcp_tool_aliases = _alias_mcp_schemas_for_model(all_tool_schemas)
         agent_stream_timeout = int(get_setting("agent_stream_timeout_seconds", 300) or 300)
 
         _tool_names_sent = [t.get("function", {}).get("name") for t in (all_tool_schemas or []) if t.get("function")]
@@ -2352,9 +2464,13 @@ async def stream_agent_loop(
         # complementary cap for the rare stream that trickles bytes forever and
         # so never trips the inactivity timeout. Generous — only catches runaway.
         _round_deadline = time.time() + max(agent_stream_timeout * 4, 1200)
+        round_messages = _messages_with_mcp_alias_guidance(
+            messages,
+            locals().get("_mcp_tool_aliases") or {},
+        )
         async for chunk in stream_llm_with_fallback(
             _candidates,
-            messages,
+            round_messages,
             temperature=temperature,
             max_tokens=max_tokens,
             prompt_type=prompt_type if round_num == 1 else None,
@@ -2515,7 +2631,13 @@ async def stream_agent_loop(
                 yield chunk
             # Intercept [DONE] — don't forward until all rounds finish
 
-        tool_blocks, used_native = _resolve_tool_blocks(round_response, native_tool_calls, round_num, is_api_model=_is_api_model)
+        tool_blocks, used_native = _resolve_tool_blocks(
+            round_response,
+            native_tool_calls,
+            round_num,
+            is_api_model=_is_api_model,
+            tool_aliases=locals().get("_mcp_tool_aliases") or {},
+        )
 
         # Force-answer round: we told the model to STOP calling tools and
         # answer. If it ignored that and emitted a (possibly DSML) tool

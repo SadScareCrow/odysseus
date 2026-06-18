@@ -38,6 +38,7 @@ docs/
 /research_data/
 tasks/
 _scratch/
+/.tmp-*/
 compound.config.json
 search_analytics.json
 **/search_analytics.json

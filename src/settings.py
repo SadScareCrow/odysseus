@@ -126,6 +126,11 @@ DEFAULT_SETTINGS = {
     # want to actually use (e.g. 900_000 to fill a 1M-context model). See
     # `compute_input_token_budget`.
     "agent_input_token_hard_max": 200_000,
+    # Optional per-model operational context caps. Model servers often report
+    # the architectural maximum, which can be much larger than is practical on
+    # local hardware. Values here bound both prompt trimming and the num_ctx
+    # sent to Ollama without lying about other models or remote providers.
+    "model_context_caps": {},
     "agent_stream_timeout_seconds": 300,
     # Extra directory roots that read_file / write_file may access, in
     # addition to the built-in project data/ and system temp dirs. Each

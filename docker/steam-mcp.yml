@@ -1,0 +1,18 @@
+services:
+  steam-mcp:
+    build:
+      context: .
+      dockerfile: docker/steam-mcp.Dockerfile
+      args:
+        STEAM_MCP_REF: ${STEAM_MCP_REF:-dbddb4f981a3a79f031b359f45c1e0e91900df8a}
+    environment:
+      - STEAM_API_KEY=${STEAM_API_KEY:-}
+      # Sarg338/steam-mcp calls its default account STEAM_USER. Forward the
+      # existing STEAM_ID value so current installations migrate unchanged.
+      - STEAM_USER=${STEAM_ID:-}
+      - FASTMCP_HOST=0.0.0.0
+      - FASTMCP_PORT=11020
+      - FASTMCP_STREAMABLE_HTTP_PATH=/mcp
+    ports:
+      - "${STEAM_MCP_BIND:-127.0.0.1}:${STEAM_MCP_PORT:-11020}:11020"
+    restart: unless-stopped

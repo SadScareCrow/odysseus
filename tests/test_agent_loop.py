@@ -2,6 +2,7 @@
 and _append_tool_results. Uses mock imports to avoid loading the full app stack."""
 
 import sys
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 _MOCKED_IMPORTS = [
@@ -40,6 +41,9 @@ try:
         _compute_final_metrics,
         _append_tool_results,
         _MCP_KEYWORDS,
+        _alias_mcp_schemas_for_model,
+        _messages_with_mcp_alias_guidance,
+        _resolve_tool_blocks,
     )
     _IMPORTED_AGENT_LOOP = sys.modules.get("src.agent_loop")
 finally:
@@ -61,6 +65,75 @@ def test_import_stubs_do_not_leak_into_later_tests():
 
 def test_mcp_keyword_gate_matches_literal_mcp_requests():
     assert "mcp" in _MCP_KEYWORDS
+
+
+def test_mcp_schemas_get_model_friendly_aliases():
+    schemas = [
+        {"type": "function", "function": {"name": "ask_user", "description": "ask", "parameters": {}}},
+        {
+            "type": "function",
+            "function": {
+                "name": "mcp__91d755cf__steam_library",
+                "description": "[MCP:Steam MCP] Steam library",
+                "parameters": {"type": "object", "properties": {}},
+            },
+        },
+    ]
+
+    aliased, aliases = _alias_mcp_schemas_for_model(schemas)
+
+    names = [s["function"]["name"] for s in aliased]
+    assert "steam_library" in names
+    assert "mcp__91d755cf__steam_library" not in names
+    assert aliases == {"steam_library": "mcp__91d755cf__steam_library"}
+    steam_schema = next(s for s in aliased if s["function"]["name"] == "steam_library")
+    assert "mcp__91d755cf__steam_library" not in steam_schema["function"]["description"]
+
+
+def test_mcp_alias_guidance_lists_model_facing_names():
+    messages = [{"role": "system", "content": "base"}]
+
+    guided = _messages_with_mcp_alias_guidance(
+        messages,
+        {"steam_library": "mcp__91d755cf__steam_library"},
+    )
+
+    assert guided is not messages
+    assert guided[0]["role"] == "system"
+    assert "`steam_library` calls the MCP `steam_library` tool." in guided[0]["content"]
+    assert "call these short function names exactly" in guided[0]["content"]
+    assert "Never pass placeholder strings such as `STEAM_ID`" in guided[0]["content"]
+
+
+def test_mcp_alias_native_call_routes_to_qualified_tool():
+    calls = [{"id": "call_1", "name": "steam_library", "arguments": '{"operation":"owned"}'}]
+    captured = {}
+
+    def fake_function_call_to_tool_block(name, arguments):
+        captured.update(name=name, arguments=arguments)
+        return SimpleNamespace(tool_type=name, content=arguments)
+
+    fn_globals = _resolve_tool_blocks.__globals__
+    original = fn_globals["function_call_to_tool_block"]
+    fn_globals["function_call_to_tool_block"] = fake_function_call_to_tool_block
+    try:
+        blocks, used_native = _resolve_tool_blocks(
+            "",
+            calls,
+            1,
+            is_api_model=True,
+            tool_aliases={"steam_library": "mcp__91d755cf__steam_library"},
+        )
+    finally:
+        fn_globals["function_call_to_tool_block"] = original
+
+    assert used_native is True
+    assert len(blocks) == 1
+    assert blocks[0].tool_type == "mcp__91d755cf__steam_library"
+    assert captured == {
+        "name": "mcp__91d755cf__steam_library",
+        "arguments": '{"operation":"owned"}',
+    }
 
 
 def test_polish_internet_search_request_classifies_as_web():

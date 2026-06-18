@@ -14,6 +14,8 @@ from urllib.parse import urlparse
 
 import httpx
 
+from src.settings import get_setting
+
 logger = logging.getLogger(__name__)
 
 _LOCAL_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1", "host.docker.internal"}
@@ -234,6 +236,29 @@ KNOWN_CONTEXT_WINDOWS = {
 _context_cache: Dict[Tuple[str, str], Tuple[int, bool]] = {}
 
 
+def _apply_configured_context_cap(endpoint_url: str, model: str, context_length: int) -> int:
+    """Apply an operator-selected cap to a local model's reported window."""
+    if context_length <= 0 or not is_local_endpoint(endpoint_url):
+        return context_length
+    caps = get_setting("model_context_caps", {})
+    if not isinstance(caps, dict):
+        return context_length
+    raw_cap = caps.get(model)
+    try:
+        cap = int(raw_cap)
+    except (TypeError, ValueError):
+        return context_length
+    if cap <= 0 or cap >= context_length:
+        return context_length
+    logger.info(
+        "Capping local context for %s from %s to %s tokens",
+        model,
+        context_length,
+        cap,
+    )
+    return cap
+
+
 def _get_context_length_cached(endpoint_url: str, model: str) -> Tuple[int, bool]:
     """Return (context_length, known). ``known`` is False only when the value is a
     bare DEFAULT_CONTEXT fallback (no endpoint report and not in the known table)."""
@@ -248,6 +273,7 @@ def _get_context_length_cached(endpoint_url: str, model: str) -> Tuple[int, bool
         return _context_cache[cache_key]
 
     ctx, known = _query_context_length(endpoint_url, model)
+    ctx = _apply_configured_context_cap(endpoint_url, model, ctx)
     # Only cache non-default values to allow retry on next request.
     # Local endpoints can restart with a different --max-model-len while keeping
     # the same model id, so always re-query them instead of serving stale cache.
@@ -328,7 +354,44 @@ def _query_context_length(endpoint_url: str, model: str) -> Tuple[int, bool]:
             return known, True
         return DEFAULT_CONTEXT, False
 
-    # Try llama.cpp /slots endpoint first — reports actual serving context
+    # Native Ollama's /api/tags catalog omits context length, while /api/show
+    # reports it in model_info (for example gemma4.context_length). Probe that
+    # authoritative per-model endpoint before generic /models fallbacks.
+    try:
+        parsed = urlparse(endpoint_url or "")
+        path = (parsed.path or "").rstrip("/")
+        host = parsed.hostname or ""
+        local_ollama = (
+            host in _LOCAL_HOSTS
+            or _is_private_ip_literal(host)
+            or _in_tailscale_range(host)
+            or parsed.port == 11434
+        )
+        native_path = path == "" or path == "/api" or path.startswith("/api/")
+        if local_ollama and native_path and parsed.scheme and parsed.netloc:
+            api_root = f"{parsed.scheme}://{parsed.netloc}/api"
+            r = httpx.post(
+                f"{api_root}/show",
+                json={"model": model},
+                timeout=REQUEST_TIMEOUT,
+            )
+            if r.is_success:
+                info = (r.json() or {}).get("model_info") or {}
+                values = [
+                    int(value)
+                    for key, value in info.items()
+                    if str(key).lower().endswith(".context_length")
+                    and isinstance(value, (int, float))
+                    and value > 0
+                ]
+                if values:
+                    ctx = max(values)
+                    logger.info(f"Ollama /api/show reports context_length={ctx} for {model}")
+                    return ctx, True
+    except Exception as e:
+        logger.debug(f"Failed to query Ollama /api/show context for {model}: {e}")
+
+    # Try llama.cpp /slots endpoint next — reports actual serving context.
     if is_local_endpoint(endpoint_url):
         try:
             base = endpoint_url.split("/v1")[0] if "/v1" in endpoint_url else endpoint_url.rsplit("/", 1)[0]
