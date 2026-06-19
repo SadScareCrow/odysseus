@@ -359,7 +359,34 @@ def _ollama_normalize_tool_messages(messages: List[Dict]) -> List[Dict]:
     """
     out: List[Dict] = []
     for m in messages or []:
-        tcs = m.get("tool_calls") if isinstance(m, dict) else None
+        if not isinstance(m, dict):
+            out.append(m)
+            continue
+
+        # Native Ollama requires string content and carries base64 images in a
+        # sibling `images` field. Odysseus' canonical messages use OpenAI-style
+        # multimodal content arrays, so adapt them before calling /api/chat.
+        content = m.get("content")
+        if isinstance(content, list):
+            text_parts: List[str] = []
+            images: List[str] = []
+            for part in content:
+                if not isinstance(part, dict):
+                    continue
+                if part.get("type") == "text":
+                    text_parts.append(part.get("text", ""))
+                elif part.get("type") == "image_url":
+                    url = (part.get("image_url") or {}).get("url", "")
+                    if url.startswith("data:") and ";base64," in url:
+                        images.append(url.split(";base64,", 1)[1])
+            if text_parts or images:
+                nm = dict(m)
+                nm["content"] = "\n".join(text_parts) if text_parts else ""
+                if images:
+                    nm["images"] = images
+                m = nm
+
+        tcs = m.get("tool_calls")
         if not tcs:
             out.append(m)
             continue
