@@ -118,7 +118,7 @@ def test_mcp_alias_native_call_routes_to_qualified_tool():
     original = fn_globals["function_call_to_tool_block"]
     fn_globals["function_call_to_tool_block"] = fake_function_call_to_tool_block
     try:
-        blocks, used_native = _resolve_tool_blocks(
+        blocks, used_native, converted_calls = _resolve_tool_blocks(
             "",
             calls,
             1,
@@ -130,6 +130,7 @@ def test_mcp_alias_native_call_routes_to_qualified_tool():
 
     assert used_native is True
     assert len(blocks) == 1
+    assert converted_calls == calls
     assert blocks[0].tool_type == "mcp__91d755cf__steam_library"
     assert captured == {
         "name": "mcp__91d755cf__steam_library",
