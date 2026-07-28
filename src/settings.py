@@ -64,11 +64,9 @@ DEFAULT_SETTINGS = {
     "search_url": "",
     "search_result_count": 5,
     # SafeSearch level applied to every provider that exposes one.
-    # "strict"   — block adult / explicit results (default; matches what users
-    #              expect from a research tool and avoids unrelated NSFW URLs
-    #              bleeding in via provider "related" / spam recommendations)
-    # "moderate" — provider-default behavior (filter explicit but allow
-    #              suggestive content)
+    # "strict"   — apply the provider's strongest filtering level (default;
+    #              keeps unrelated low-quality/spam recommendations out)
+    # "moderate" — provider-default filtering behavior
     # "off"      — disable filtering entirely (advanced users only)
     #
     # Providers that honor this setting (translated to each provider's native
@@ -126,11 +124,6 @@ DEFAULT_SETTINGS = {
     # want to actually use (e.g. 900_000 to fill a 1M-context model). See
     # `compute_input_token_budget`.
     "agent_input_token_hard_max": 200_000,
-    # Optional per-model operational context caps. Model servers often report
-    # the architectural maximum, which can be much larger than is practical on
-    # local hardware. Values here bound both prompt trimming and the num_ctx
-    # sent to Ollama without lying about other models or remote providers.
-    "model_context_caps": {},
     "agent_stream_timeout_seconds": 300,
     # Extra directory roots that read_file / write_file may access, in
     # addition to the built-in project data/ and system temp dirs. Each

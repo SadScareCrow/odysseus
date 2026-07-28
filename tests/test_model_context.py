@@ -205,66 +205,6 @@ class TestGetContextLength:
         model_context._context_cache.clear()
         model_context._catalog_ctx_cache.clear()
 
-    def test_native_ollama_uses_api_show_context_length(self, monkeypatch):
-        def fake_post(url, json=None, timeout=None):
-            assert url == "http://127.0.0.1:11434/api/show"
-            assert json == {"model": "local-model:latest"}
-            return model_context.httpx.Response(
-                200,
-                request=model_context.httpx.Request("POST", url),
-                json={
-                    "model_info": {
-                        "localmodel.embedding_length": 4096,
-                        "localmodel.context_length": 262144,
-                    }
-                },
-            )
-
-        monkeypatch.setattr(model_context.httpx, "post", fake_post)
-
-        assert model_context._query_context_length(
-            "http://127.0.0.1:11434/api/chat",
-            "local-model:latest",
-        ) == (262144, True)
-
-    def test_local_model_context_cap_bounds_reported_window(self, monkeypatch):
-        monkeypatch.setattr(
-            model_context,
-            "get_setting",
-            lambda key, default=None: {"gemma4:12b": 65536}
-            if key == "model_context_caps"
-            else default,
-        )
-        monkeypatch.setattr(
-            model_context,
-            "_query_context_length",
-            lambda endpoint_url, model: (262144, True),
-        )
-
-        assert model_context.get_context_length(
-            "http://127.0.0.1:11434/api/chat",
-            "gemma4:12b",
-        ) == 65536
-
-    def test_model_context_cap_does_not_change_remote_provider(self, monkeypatch):
-        monkeypatch.setattr(
-            model_context,
-            "get_setting",
-            lambda key, default=None: {"gpt-5": 65536}
-            if key == "model_context_caps"
-            else default,
-        )
-        monkeypatch.setattr(
-            model_context,
-            "_query_context_length",
-            lambda endpoint_url, model: (400000, True),
-        )
-
-        assert model_context.get_context_length(
-            "https://api.openai.com/v1/chat/completions",
-            "gpt-5",
-        ) == 400000
-
     def test_local_endpoint_requeries_same_model_after_restart(self, monkeypatch):
         calls = []
 

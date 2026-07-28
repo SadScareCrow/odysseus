@@ -645,12 +645,6 @@ def _build_ollama_payload(
         payload["options"] = options
     if tools:
         payload["tools"] = tools
-        # Native Ollama thinking models can spend the entire response in the
-        # thinking channel and terminate without a usable tool call. Match the
-        # /v1 compatibility path: suppress thinking only for tool rounds so the
-        # model emits its native function call in message.tool_calls.
-        if _supports_thinking(model):
-            payload["think"] = False
     return payload
 
 
@@ -1044,6 +1038,31 @@ def _provider_label(url: str) -> str:
         # discovery (see ModelDiscovery._fingerprint_provider); this stays neutral.
         return "local endpoint"
     return host or "provider"
+
+
+def _is_openai_hosted_chat_url(url: str) -> bool:
+    try:
+        parsed = urlparse(url or "")
+    except Exception:
+        return False
+    path = (parsed.path or "").rstrip("/")
+    return _host_match(url, "openai.com") and path.endswith("/chat/completions")
+
+
+def _model_disallows_reasoning_effort_with_chat_tools(model: str) -> bool:
+    """OpenAI GPT 5.x variants reject reasoning_effort + tools on chat completions."""
+    m = (model or "").strip().lower()
+    return bool(re.match(r"^(?:openai/)?gpt-5(?:[.\-]\d+)?(?:[-_:].*)?$", m))
+
+
+def _scrub_openai_chat_tool_reasoning(payload: Dict, target_url: str, model: str) -> None:
+    if not payload.get("tools"):
+        return
+    if not _is_openai_hosted_chat_url(target_url):
+        return
+    if not _model_disallows_reasoning_effort_with_chat_tools(model):
+        return
+    payload["reasoning_effort"] = "none"
 
 
 def _normalize_chatgpt_subscription_url(url: str) -> str:
@@ -2211,6 +2230,7 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
             payload["think"] = False
         _apply_local_cache_affinity(payload, url, session_id)
         _apply_local_generation_stability(payload, target_url, model)
+        _scrub_openai_chat_tool_reasoning(payload, target_url, model)
         h = _provider_headers(provider, headers)
         if provider == "copilot":
             from src.copilot import apply_request_headers

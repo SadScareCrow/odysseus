@@ -32,8 +32,8 @@ def test_exact_limit_unchanged():
 
 
 def test_default_limit_matches_constant():
-    """_truncate default limit equals MAX_OUTPUT_CHARS (10 000)."""
-    assert MAX_OUTPUT_CHARS == 10_000
+    """_truncate default limit equals MAX_OUTPUT_CHARS (30 000)."""
+    assert MAX_OUTPUT_CHARS == 30_000
     text = "y" * 10_001
     result = _truncate(text)
     assert "truncated" in result

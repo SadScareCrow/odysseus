@@ -439,6 +439,9 @@ class TestClassifyEndpoint:
     def test_public_api(self):
         assert _classify_endpoint("https://api.openai.com/v1") == "api"
 
+    def test_openrouter_api(self):
+        assert _classify_endpoint("https://openrouter.ai/api/v1") == "api"
+
     def test_empty_string(self):
         assert _classify_endpoint("") == "api"
 
@@ -1010,6 +1013,44 @@ def test_patch_models_pinned_does_not_clobber_hidden(monkeypatch):
     assert json.loads(ep.pinned_models) == ["deploy-1"]
 
 
+def test_patch_api_hidden_payload_converts_to_pinned(monkeypatch):
+    ep = _make_endpoint(
+        base_url="https://openrouter.ai/api/v1",
+        cached_models=json.dumps(["m1", "m2", "m3"]),
+        pinned_models=None,
+    )
+    db = _PinnedFakeDb([ep])
+    monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
+    monkeypatch.setattr(model_routes, "require_admin", lambda request: None)
+    endpoint = _get_route("/api/model-endpoints/{ep_id}/models", "PATCH")
+
+    result = asyncio.run(endpoint("ep1", _PinnedFakeRequest(body={"hidden": ["m2"]})))
+
+    assert result["pinned_count"] == 2
+    assert result["hidden_count"] == 0
+    assert json.loads(ep.pinned_models) == ["m1", "m3"]
+    assert ep.hidden_models is None
+
+
+def test_patch_api_hidden_empty_pins_all_cached_models(monkeypatch):
+    ep = _make_endpoint(
+        base_url="https://openrouter.ai/api/v1",
+        cached_models=json.dumps(["m1", "m2", "m3"]),
+        pinned_models=None,
+    )
+    db = _PinnedFakeDb([ep])
+    monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
+    monkeypatch.setattr(model_routes, "require_admin", lambda request: None)
+    endpoint = _get_route("/api/model-endpoints/{ep_id}/models", "PATCH")
+
+    result = asyncio.run(endpoint("ep1", _PinnedFakeRequest(body={"hidden": []})))
+
+    assert result["pinned_count"] == 3
+    assert result["hidden_count"] == 0
+    assert json.loads(ep.pinned_models) == ["m1", "m2", "m3"]
+    assert ep.hidden_models is None
+
+
 def test_get_models_returns_pinned_when_probe_empty(monkeypatch):
     ep = _make_endpoint(pinned_models=json.dumps(["deploy-1"]))
     db = _PinnedFakeDb([ep])
@@ -1023,6 +1064,26 @@ def test_get_models_returns_pinned_when_probe_empty(monkeypatch):
     ids = [row["id"] for row in result]
     assert ids == ["deploy-1"]
     assert result[0]["is_pinned"] is True
+
+
+def test_get_api_models_marks_picker_as_pinned_only(monkeypatch):
+    ep = _make_endpoint(
+        base_url="https://api.example.test/v1",
+        cached_models=json.dumps(["openai/gpt-image-1", "anthropic/claude-sonnet-4"]),
+        pinned_models=json.dumps(["openai/gpt-image-1"]),
+    )
+    db = _PinnedFakeDb([ep])
+    monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
+    monkeypatch.setattr(model_routes, "require_admin", lambda request: None)
+    endpoint = _get_route("/api/model-endpoints/{ep_id}/models", "GET")
+
+    result = endpoint("ep1", _PinnedFakeRequest(), SimpleNamespace(headers={}))
+
+    by_id = {row["id"]: row for row in result}
+    assert by_id["openai/gpt-image-1"]["picker_requires_pinning"] is True
+    assert by_id["openai/gpt-image-1"]["is_pinned"] is True
+    assert by_id["anthropic/claude-sonnet-4"]["picker_requires_pinning"] is True
+    assert by_id["anthropic/claude-sonnet-4"]["is_pinned"] is False
 
 
 def test_reprobe_preserves_pinned_models(monkeypatch):
@@ -1182,6 +1243,79 @@ def test_list_model_endpoints_returns_key_fingerprint(monkeypatch):
     assert result[0]["api_key_fingerprint"] == _api_key_fingerprint("key-one")
     assert result[1]["has_key"] is False
     assert result[1]["api_key_fingerprint"] == ""
+
+
+def test_list_api_endpoint_reports_inventory_count_when_none_pinned(monkeypatch):
+    ep = _make_endpoint(
+        base_url="https://api.example.test/v1",
+        cached_models=json.dumps(["openai/gpt-image-1", "anthropic/claude-sonnet-4"]),
+        pinned_models=None,
+    )
+    db = _PinnedFakeDb([ep])
+    monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
+    monkeypatch.setattr(model_routes, "require_admin", lambda request: None)
+    endpoint = _get_route("/api/model-endpoints", "GET")
+
+    result = endpoint(_PinnedFakeRequest())
+
+    assert result[0]["models"] == []
+    assert result[0]["model_count"] == 2
+    assert result[0]["picker_requires_pinning"] is True
+    assert result[0]["status"] == "online"
+
+
+def test_list_api_endpoint_returns_pinned_picker_models(monkeypatch):
+    ep = _make_endpoint(
+        base_url="https://api.example.test/v1",
+        cached_models=json.dumps(["openai/gpt-image-1", "anthropic/claude-sonnet-4"]),
+        pinned_models=json.dumps(["openai/gpt-image-1"]),
+    )
+    db = _PinnedFakeDb([ep])
+    monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
+    monkeypatch.setattr(model_routes, "require_admin", lambda request: None)
+    endpoint = _get_route("/api/model-endpoints", "GET")
+
+    result = endpoint(_PinnedFakeRequest())
+
+    assert result[0]["models"] == ["openai/gpt-image-1"]
+    assert result[0]["pinned_models"] == ["openai/gpt-image-1"]
+    assert result[0]["model_count"] == 2
+
+
+def test_list_api_endpoint_pinned_models_ignore_stale_hidden_state(monkeypatch):
+    ep = _make_endpoint(
+        base_url="https://api.example.test/v1",
+        cached_models=json.dumps(["openai/gpt-image-1", "anthropic/claude-sonnet-4"]),
+        hidden_models=json.dumps(["openai/gpt-image-1"]),
+        pinned_models=json.dumps(["openai/gpt-image-1"]),
+    )
+    db = _PinnedFakeDb([ep])
+    monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
+    monkeypatch.setattr(model_routes, "require_admin", lambda request: None)
+    endpoint = _get_route("/api/model-endpoints", "GET")
+
+    result = endpoint(_PinnedFakeRequest())
+
+    assert result[0]["models"] == ["openai/gpt-image-1"]
+
+
+def test_list_api_endpoint_derives_pins_from_legacy_hidden_state(monkeypatch):
+    ep = _make_endpoint(
+        base_url="https://openrouter.ai/api/v1",
+        cached_models=json.dumps(["m1", "m2", "m3"]),
+        hidden_models=json.dumps(["m2"]),
+        pinned_models=None,
+    )
+    db = _PinnedFakeDb([ep])
+    monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
+    monkeypatch.setattr(model_routes, "require_admin", lambda request: None)
+    endpoint = _get_route("/api/model-endpoints", "GET")
+
+    result = endpoint(_PinnedFakeRequest())
+
+    assert result[0]["models"] == ["m1", "m3"]
+    assert result[0]["pinned_models"] == ["m1", "m3"]
+    assert json.loads(ep.pinned_models) == ["m1", "m3"]
 
 
 def test_post_creates_endpoint_with_pinned_models(monkeypatch):
@@ -1553,11 +1687,12 @@ def test_api_models_scopes_api_token_to_token_owner(monkeypatch):
     assert admin_checks == ["alice"]
 
 
-def test_api_models_returns_cached_proxy_models_without_refresh_probe(monkeypatch):
+def test_api_models_returns_only_pinned_proxy_models_without_refresh_probe(monkeypatch):
     row = _route_ep(
         "proxy",
         "http://100.117.136.97:34521/v1",
-        cached_models=["cached-model"],
+        cached_models=["cached-model", "other-model"],
+        pinned_models=["cached-model"],
         endpoint_kind="proxy",
         api_key="fake-key",
         refresh_mode="manual",
@@ -1579,10 +1714,60 @@ def test_api_models_returns_cached_proxy_models_without_refresh_probe(monkeypatc
     result = _route_endpoint(router, "/api/models")(_route_request())
 
     assert result["items"][0]["models"] == ["cached-model"]
+    assert result["items"][0]["models_extra"] == []
     assert result["items"][0]["category"] == "api"
     assert result["items"][0]["endpoint_kind"] == "proxy"
     assert "offline" not in result["items"][0]
-    assert json.loads(row.cached_models) == ["cached-model"]
+    assert json.loads(row.cached_models) == ["cached-model", "other-model"]
+
+
+def test_api_models_openrouter_uses_pinned_models_not_hidden(monkeypatch):
+    row = _route_ep(
+        "openrouter",
+        "https://openrouter.ai/api/v1",
+        cached_models=["openai/gpt-image-1", "anthropic/claude-sonnet-4"],
+        pinned_models=["openai/gpt-image-1"],
+        api_key="fake-key",
+    )
+    row.hidden_models = json.dumps(["openai/gpt-image-1"])
+    db = _RouteDb([row])
+    router = model_routes.setup_model_routes(model_discovery=None)
+
+    monkeypatch.setattr(model_routes, "ModelEndpoint", _RouteModelEndpoint)
+    monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
+    monkeypatch.setattr(model_routes, "_auth_disabled", lambda: True)
+    monkeypatch.setattr(model_routes, "build_chat_url", lambda base: f"{base}/chat/completions")
+    monkeypatch.setattr(threading, "Thread", _NoopThread)
+
+    result = _route_endpoint(router, "/api/models")(_route_request())
+
+    assert result["items"][0]["endpoint_name"] == "openrouter"
+    assert result["items"][0]["category"] == "api"
+    assert result["items"][0]["models"] == ["openai/gpt-image-1"]
+
+
+def test_api_models_openrouter_derives_legacy_visible_models(monkeypatch):
+    row = _route_ep(
+        "openrouter",
+        "https://openrouter.ai/api/v1",
+        cached_models=["m1", "m2", "m3"],
+        pinned_models=None,
+        api_key="fake-key",
+    )
+    row.hidden_models = json.dumps(["m2"])
+    db = _RouteDb([row])
+    router = model_routes.setup_model_routes(model_discovery=None)
+
+    monkeypatch.setattr(model_routes, "ModelEndpoint", _RouteModelEndpoint)
+    monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
+    monkeypatch.setattr(model_routes, "_auth_disabled", lambda: True)
+    monkeypatch.setattr(model_routes, "build_chat_url", lambda base: f"{base}/chat/completions")
+    monkeypatch.setattr(threading, "Thread", _NoopThread)
+
+    result = _route_endpoint(router, "/api/models")(_route_request())
+
+    assert result["items"][0]["endpoint_name"] == "openrouter"
+    assert result["items"][0]["models"] == ["m1", "m3"]
 
 
 @pytest.mark.asyncio

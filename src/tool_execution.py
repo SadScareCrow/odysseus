@@ -339,21 +339,6 @@ _MCP_TOOL_MAP = {
     "generate_image": ("image_gen",  "generate_image"),
 }
 _EMAIL_MCP_OWNER_ARG = "_odysseus_owner"
-_PLACEHOLDER_STEAM_IDS = {"", "STEAM_ID", "YOUR_STEAM_ID", "<STEAM_ID>", "YOUR_ACTUAL_STEAM_ID"}
-
-
-def _sanitize_mcp_args(tool: str, args: Dict) -> Dict:
-    """Drop model-copied placeholders so MCP server env defaults can apply."""
-    if not isinstance(args, dict):
-        return args
-    if tool.endswith("__steam_library") or tool.endswith("__steam_profile") or tool.endswith("__steam_stats"):
-        out = dict(args)
-        steam_id = str(out.get("steamid") or out.get("steam_id") or "").strip()
-        if steam_id.upper() in _PLACEHOLDER_STEAM_IDS:
-            out.pop("steamid", None)
-            out.pop("steam_id", None)
-        return out
-    return args
 
 
 def _parse_qualified_mcp_args(tool: str, content: str) -> tuple[Dict, Optional[str]]:
@@ -370,7 +355,7 @@ def _parse_qualified_mcp_args(tool: str, content: str) -> tuple[Dict, Optional[s
         if tool.startswith("mcp__email__"):
             return {}, "Email MCP tool arguments must be a JSON object."
         return {}, None
-    return _sanitize_mcp_args(tool, parsed), None
+    return parsed, None
 
 
 def _parse_generate_image(content: str) -> Dict:
@@ -766,6 +751,11 @@ async def _execute_tool_block_impl(
         first_line = content.split(chr(10))[0][:80]
         desc = f"{tool}: {first_line}"
         result = await _direct_fallback(tool, content, progress_cb=progress_cb) \
+            or {"error": f"{tool}: execution failed", "exit_code": 1}
+    elif tool in ("apply_patch", "todowrite"):
+        first_line = content.split(chr(10))[0][:80]
+        desc = f"{tool}: {first_line}" if first_line else tool
+        result = await _direct_fallback(tool, content, session_id=session_id, owner=owner) \
             or {"error": f"{tool}: execution failed", "exit_code": 1}
     elif tool == "manage_bg_jobs":
         # Inspect/kill detached `bash` jobs; needs session_id to scope to chat.
