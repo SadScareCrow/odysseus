@@ -82,9 +82,15 @@ def initialize_managers(base_dir: str, rag_manager=None) -> Dict[str, Any]:
     memory_provider_registry = MemoryProviderRegistry([
         NativeMemoryProvider(memory_manager, memory_vector),
     ])
+    from src.greenhouse_wiring import register_greenhouse_provider
+    greenhouse_provider = register_greenhouse_provider(memory_provider_registry)
 
     # Initialize processors
     chat_processor = ChatProcessor(memory_manager, personal_docs_manager, memory_vector=memory_vector, skills_manager=skills_manager)
+    # Attached rather than passed as a constructor argument: ChatProcessor is
+    # upstream-owned, and an attribute keeps this fork's edit to one line here
+    # instead of a signature change to reconcile on every merge.
+    chat_processor.greenhouse_provider = greenhouse_provider
     research_handler = ResearchHandler()
     
     # Initialize chat handler with all dependencies
@@ -110,6 +116,7 @@ def initialize_managers(base_dir: str, rag_manager=None) -> Dict[str, Any]:
         "memory_manager": memory_manager,
         "memory_vector": memory_vector,
         "memory_provider_registry": memory_provider_registry,
+        "greenhouse_provider": greenhouse_provider,
         "skills_manager": skills_manager,
         "session_manager": session_manager,
         "upload_handler": upload_handler,

@@ -784,6 +784,16 @@ async def build_chat_context(
         _preface_kwargs["use_rag"] = use_rag_val
     preface, rag_sources, web_sources = chat_processor.build_context_preface(**_preface_kwargs)
 
+    # Greenhouse recall. Awaited here rather than inside build_context_preface,
+    # which is sync — this is the nearest async caller.
+    if mem_enabled and not incognito:
+        from src.greenhouse_wiring import greenhouse_recall_message
+        _greenhouse_ctx = await greenhouse_recall_message(
+            getattr(chat_processor, "greenhouse_provider", None), _ctx_msg,
+        )
+        if _greenhouse_ctx:
+            preface.append(_greenhouse_ctx)
+
     # Capture used memories immediately
     used_memories = getattr(chat_processor, '_last_used_memories', [])
 
