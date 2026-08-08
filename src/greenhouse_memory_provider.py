@@ -35,6 +35,10 @@ logger = logging.getLogger(__name__)
 # payload rides in `metadata` rather than being dropped.
 _DIRECT_FIELDS = {"id", "content", "score"}
 
+# Who an archive is attributed to. An archive is reversible and attributable;
+# the record keeps who retired it.
+ARCHIVE_ACTOR = "odysseus-memory-provider"
+
 
 class GreenhouseUnavailable(RuntimeError):
     """A durable write could not be completed.
@@ -194,7 +198,9 @@ class GreenhouseMemoryProvider(MemoryProvider):
         the Seed and evidence behind a Memory outlive the Memory itself.
         """
         response = await self._send(
-            "POST", f"/v1/memories/{quote(memory_id, safe='')}/archive"
+            "POST",
+            f"/v1/memories/{quote(memory_id, safe='')}/archive",
+            json={"actor": ARCHIVE_ACTOR},
         )
         if response is None:
             return False

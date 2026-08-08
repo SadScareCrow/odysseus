@@ -246,6 +246,7 @@ def test_delete_archives_and_never_hard_deletes():
     def handler(request):
         seen["method"] = request.method
         seen["url"] = str(request.url)
+        seen["body"] = json.loads(request.content) if request.content else None
         return httpx.Response(200, json={"memory": MEMORY_PAYLOAD})
 
     provider = make_provider(handler)
@@ -254,6 +255,9 @@ def test_delete_archives_and_never_hard_deletes():
     assert seen["method"] == "POST"
     assert seen["url"].endswith("/v1/memories/rec-1/archive")
     assert "DELETE" != seen["method"]
+    # The route requires an actor: an archive is attributable, and "who
+    # retired this" is part of the record rather than an optional extra.
+    assert seen["body"] == {"actor": "odysseus-memory-provider"}
 
 
 def test_delete_returns_false_for_a_missing_record():
