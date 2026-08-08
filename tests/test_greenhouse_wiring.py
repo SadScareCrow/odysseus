@@ -159,3 +159,32 @@ def test_none_provider_is_a_no_op():
     from src.greenhouse_wiring import greenhouse_recall_message
 
     assert run(greenhouse_recall_message(None, "q")) is None
+
+
+# --- the automatic extractor's default ----------------------------------
+
+
+def test_auto_extraction_defaults_off_once_greenhouse_owns_memory(monkeypatch):
+    from src.greenhouse_wiring import auto_memory_default
+
+    monkeypatch.setenv("GREENHOUSE_URL", "http://greenhouse.test")
+    monkeypatch.setenv("GREENHOUSE_TOKEN", "tok")
+
+    assert auto_memory_default() is False
+
+
+def test_auto_extraction_default_is_unchanged_without_greenhouse(monkeypatch):
+    """An Odysseus with no Greenhouse keeps its own behaviour exactly."""
+    from src.greenhouse_wiring import auto_memory_default
+
+    monkeypatch.delenv("GREENHOUSE_URL", raising=False)
+    monkeypatch.delenv("GREENHOUSE_TOKEN", raising=False)
+
+    assert auto_memory_default() is True
+
+
+def test_scoping_is_a_no_op_without_a_provider():
+    from src.greenhouse_wiring import scope_native_memory_to_scratch
+
+    sentinel = object()
+    assert scope_native_memory_to_scratch(sentinel, None) is sentinel

@@ -46,6 +46,12 @@ def initialize_managers(base_dir: str, rag_manager=None) -> Dict[str, Any]:
 
     # Initialize core managers
     memory_manager = MemoryManager(DATA_DIR)
+    # Greenhouse owns the durable model. Wrapped here, before anything else is
+    # handed the manager, so every writer and the vector rebuild below see the
+    # scratch-scoped one.
+    from src.greenhouse_wiring import build_greenhouse_provider, scope_native_memory_to_scratch
+    greenhouse_provider = build_greenhouse_provider()
+    memory_manager = scope_native_memory_to_scratch(memory_manager, greenhouse_provider)
     skills_manager = SkillsManager(DATA_DIR)
     session_manager = SessionManager(SESSIONS_FILE)
     set_session_manager(session_manager)  # Enable Session.add_message() persistence
@@ -82,8 +88,8 @@ def initialize_managers(base_dir: str, rag_manager=None) -> Dict[str, Any]:
     memory_provider_registry = MemoryProviderRegistry([
         NativeMemoryProvider(memory_manager, memory_vector),
     ])
-    from src.greenhouse_wiring import register_greenhouse_provider
-    greenhouse_provider = register_greenhouse_provider(memory_provider_registry)
+    if greenhouse_provider is not None:
+        memory_provider_registry.register(greenhouse_provider)
 
     # Initialize processors
     chat_processor = ChatProcessor(memory_manager, personal_docs_manager, memory_vector=memory_vector, skills_manager=skills_manager)

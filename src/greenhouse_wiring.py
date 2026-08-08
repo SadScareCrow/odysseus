@@ -54,6 +54,34 @@ def register_greenhouse_provider(registry) -> Optional[Any]:
     return provider
 
 
+def auto_memory_default() -> bool:
+    """Whether background memory extraction is on when the user has no preference.
+
+    Off once Greenhouse is configured. The extractor asks an LLM to infer facts
+    from chat every fourth message pair, and those are refused downstream as
+    uncorroborated — so leaving it on buys nothing and costs a model call each
+    time. Unchanged when Greenhouse is absent: an ordinary Odysseus keeps its
+    own default.
+    """
+    return not (os.getenv("GREENHOUSE_URL") and os.getenv("GREENHOUSE_TOKEN"))
+
+
+def scope_native_memory_to_scratch(memory_manager, provider):
+    """Wrap `memory_manager` so durable writes go to Greenhouse.
+
+    Returns the manager unchanged when Greenhouse is not configured: an
+    Odysseus with no Greenhouse behaves exactly as it does today, rather than
+    losing its own memory to a provider that is not there.
+    """
+    if provider is None:
+        return memory_manager
+
+    from src.greenhouse_backed_memory_manager import GreenhouseBackedMemoryManager
+
+    logger.info("Native memory scoped to within-session scratch; Greenhouse owns durable writes")
+    return GreenhouseBackedMemoryManager(memory_manager, provider)
+
+
 async def greenhouse_recall_message(provider, message: str, top_k: int = RECALL_LIMIT):
     """Recall from Greenhouse and render it as one untrusted context message.
 
