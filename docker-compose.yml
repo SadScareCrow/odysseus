@@ -28,6 +28,10 @@ services:
       - RESEARCH_LLM_ENDPOINT=${RESEARCH_LLM_ENDPOINT:-}
       - HF_TOKEN=${HF_TOKEN:-}
       - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN:-}
+      # Greenhouse owns the durable model of the user. Absent, Odysseus keeps
+      # its own native memory and behaves exactly as stock.
+      - GREENHOUSE_URL=${GREENHOUSE_URL:-}
+      - GREENHOUSE_TOKEN=${GREENHOUSE_TOKEN:-}
       - SEARXNG_INSTANCE=http://searxng:8080
       - CHROMADB_HOST=chromadb
       - CHROMADB_PORT=8000
