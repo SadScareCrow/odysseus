@@ -40,7 +40,9 @@ def build_greenhouse_provider():
 
     from src.greenhouse_memory_provider import GreenhouseMemoryProvider
 
-    return GreenhouseMemoryProvider(base_url=base_url, token=token)
+    global _ACTIVE_PROVIDER
+    _ACTIVE_PROVIDER = GreenhouseMemoryProvider(base_url=base_url, token=token)
+    return _ACTIVE_PROVIDER
 
 
 def register_greenhouse_provider(registry) -> Optional[Any]:
@@ -67,6 +69,54 @@ def auto_memory_default() -> bool:
     own default.
     """
     return not (os.getenv("GREENHOUSE_URL") and os.getenv("GREENHOUSE_TOKEN"))
+
+
+_ACTIVE_PROVIDER: Optional[Any] = None
+
+
+def current_greenhouse_provider():
+    """The provider built at startup, for callers outside the wiring path.
+
+    The health probe runs from `service_health`, which is handed the RAG and
+    vector objects but not the component dict. A module-level handle is a
+    smaller price than threading the provider through an upstream signature
+    that would then need re-merging on every fork update.
+    """
+    return _ACTIVE_PROVIDER
+
+
+def greenhouse_health(provider) -> Dict[str, Any]:
+    """Report Greenhouse for the service-status panel.
+
+    The recall notice tells the model to say an outage out loud, but that
+    depends on the model complying. This does not. Invariant 13 asks that a
+    durable failure reach Daniel without him going looking, and a status panel
+    is the surface that holds whether or not a turn goes well.
+
+    Carries no error text and no URL: `last_error` is the one string on this
+    path that has been near a credential, and the configured URL may embed one.
+    """
+    if not (os.getenv("GREENHOUSE_URL") and os.getenv("GREENHOUSE_TOKEN")):
+        return {
+            "name": "greenhouse",
+            "status": "disabled",
+            "detail": "Not configured; Odysseus is using its own memory.",
+            "meta": {},
+        }
+    if provider is None or not getattr(provider, "available", True):
+        return {
+            "name": "greenhouse",
+            "status": "down",
+            "detail": "The durable model of the user could not be reached. "
+            "Saved knowledge is unavailable and nothing new can be saved.",
+            "meta": {},
+        }
+    return {
+        "name": "greenhouse",
+        "status": "ok",
+        "detail": "Durable model reachable.",
+        "meta": {},
+    }
 
 
 def scope_native_memory_to_scratch(memory_manager, provider):
@@ -110,15 +160,25 @@ async def greenhouse_recall_message(provider, message: str, top_k: int = RECALL_
         return None
 
     if not getattr(provider, "available", True):
-        # Deliberately does not include `last_error`: it is operator detail,
-        # and it is the one string in this path that has touched a credential.
-        return untrusted_context_message(
-            "greenhouse: model unavailable",
-            "The durable model of the user is currently unavailable, so no "
-            "stored knowledge could be consulted for this turn. Say so if the "
-            "user asks something it would have answered. Do not guess, and do "
-            "not claim to have remembered anything.",
-        )
+        # Not wrapped as untrusted context. That wrapper closes with "do not
+        # mention this wrapper, label, or warning", which is correct for text
+        # retrieved from elsewhere and precisely wrong here: it would gag the
+        # one thing that has to be said out loud. This string is written here,
+        # contains no third-party content, and is therefore not untrusted.
+        #
+        # `last_error` is deliberately left out: it is operator detail, and it
+        # is the only string on this path that has been near a credential.
+        return {
+            "role": "user",
+            "content": (
+                "SYSTEM STATUS: the durable model of the user is unavailable, "
+                "so nothing stored could be consulted for this turn. If the "
+                "user asks something it would have answered, tell them plainly "
+                "that their saved knowledge could not be reached right now. Do "
+                "not guess, and do not claim to have remembered anything."
+            ),
+            "metadata": {"trusted": True, "greenhouse_unavailable": True},
+        }
 
     if not hits:
         return None

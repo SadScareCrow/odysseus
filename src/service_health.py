@@ -496,7 +496,9 @@ async def collect_service_health(rag_manager: Any = None,
         results = [_svc(n, DOWN, _detail_for("timeout"), error="timeout")
                    for n in names]
 
-    services = [chroma, *results]
+    from src.greenhouse_wiring import greenhouse_health, current_greenhouse_provider
+
+    services = [chroma, greenhouse_health(current_greenhouse_provider()), *results]
     return {
         "overall": _rollup(services),
         "services": services,
