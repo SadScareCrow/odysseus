@@ -72,6 +72,20 @@ def auto_memory_default() -> bool:
 
 
 _ACTIVE_PROVIDER: Optional[Any] = None
+_ACTIVE_MEMORY_MANAGER: Optional[Any] = None
+
+
+def active_memory_manager(fallback):
+    """The boundary-respecting memory manager, or `fallback` if there is none.
+
+    Most writers receive the manager by injection, so wrapping it once at the
+    composition root covers them. A couple build their own instead, which walks
+    straight past the wrapper -- they call this rather than the constructor.
+
+    Returns `fallback` when Greenhouse is not configured, so an ordinary
+    Odysseus is unchanged.
+    """
+    return _ACTIVE_MEMORY_MANAGER if _ACTIVE_MEMORY_MANAGER is not None else fallback
 
 
 def current_greenhouse_provider():
@@ -131,8 +145,10 @@ def scope_native_memory_to_scratch(memory_manager, provider):
 
     from src.greenhouse_backed_memory_manager import GreenhouseBackedMemoryManager
 
+    global _ACTIVE_MEMORY_MANAGER
     logger.info("Native memory scoped to within-session scratch; Greenhouse owns durable writes")
-    return GreenhouseBackedMemoryManager(memory_manager, provider)
+    _ACTIVE_MEMORY_MANAGER = GreenhouseBackedMemoryManager(memory_manager, provider)
+    return _ACTIVE_MEMORY_MANAGER
 
 
 async def greenhouse_recall_message(provider, message: str, top_k: int = RECALL_LIMIT):

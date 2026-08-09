@@ -1,0 +1,24 @@
+#!/bin/sh
+# Check the Greenhouse boundary after every merge.
+#
+# The failure worth catching is a *clean* merge: upstream adds a durable writer
+# to data/memory.json, nothing conflicts, and Odysseus quietly resumes keeping
+# its own model of the user. A conflict would at least have been loud.
+#
+# Reports only. A hook that can block a merge it does not understand is a hook
+# that gets disabled.
+
+repo="$(git rev-parse --show-toplevel)"
+python="$repo/.venv/Scripts/python.exe"
+[ -x "$python" ] || python="$(command -v python3 || command -v python)"
+[ -n "$python" ] || exit 0
+
+printf '\n[greenhouse] checking the memory boundary after merge...\n'
+if "$python" -m pytest -q "$repo/tests/test_greenhouse_boundary.py" >/dev/null 2>&1; then
+    printf '[greenhouse] boundary intact.\n\n'
+else
+    printf '[greenhouse] BOUNDARY BROKEN by this merge.\n'
+    printf '[greenhouse] Odysseus may be storing its own model of the user again.\n'
+    printf '[greenhouse] run: pytest tests/test_greenhouse_boundary.py\n\n'
+fi
+exit 0

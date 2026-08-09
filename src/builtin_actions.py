@@ -81,8 +81,11 @@ async def action_consolidate_memory(owner: str, **kwargs) -> Tuple[str, bool]:
         from src.constants import DATA_DIR
         from src.llm_core import llm_call_async_with_fallback
         from src.memory import MemoryManager
+        from src.greenhouse_wiring import active_memory_manager
 
-        manager = MemoryManager(DATA_DIR)
+        # Built here rather than injected, so ask for the boundary-respecting
+        # manager explicitly; a raw one writes straight past Greenhouse.
+        manager = active_memory_manager(MemoryManager(DATA_DIR))
         all_memories = manager.load_all()
 
         _owner_clean = (owner or "").strip()

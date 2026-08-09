@@ -83,7 +83,11 @@ def _ensure_init():
 
     from src.constants import DATA_DIR
     from src.memory import MemoryManager
-    _memory_manager = MemoryManager(DATA_DIR)
+    from src.greenhouse_wiring import active_memory_manager
+
+    # Built here rather than injected, so ask for the boundary-respecting
+    # manager explicitly; a raw one writes straight past Greenhouse.
+    _memory_manager = active_memory_manager(MemoryManager(DATA_DIR))
 
     try:
         from src.memory_vector import MemoryVectorStore

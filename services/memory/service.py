@@ -40,7 +40,14 @@ class MemoryService:
     """
 
     def __init__(self, data_dir: str = DATA_DIR):
-        self.manager = MemoryManager(data_dir)
+        from src.greenhouse_wiring import active_memory_manager
+
+        # Built rather than injected, so ask for the boundary-respecting
+        # manager explicitly; a raw one writes straight past Greenhouse. Only
+        # for the default location: a caller naming a different directory means
+        # it, and must not be silently handed the application's manager.
+        native = MemoryManager(data_dir)
+        self.manager = active_memory_manager(native) if data_dir == DATA_DIR else native
         self.vector_store = MemoryVectorStore(data_dir) if os.path.exists(
             os.path.join(data_dir, "memory_vectors")
         ) else None

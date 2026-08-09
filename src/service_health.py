@@ -498,7 +498,12 @@ async def collect_service_health(rag_manager: Any = None,
 
     from src.greenhouse_wiring import greenhouse_health, current_greenhouse_provider
 
-    services = [chroma, greenhouse_health(current_greenhouse_provider()), *results]
+    # Omitted entirely when unconfigured, so an Odysseus without Greenhouse
+    # reports exactly what it always did.
+    greenhouse = greenhouse_health(current_greenhouse_provider())
+    extra = [greenhouse] if greenhouse["status"] != DISABLED else []
+
+    services = [chroma, *extra, *results]
     return {
         "overall": _rollup(services),
         "services": services,
