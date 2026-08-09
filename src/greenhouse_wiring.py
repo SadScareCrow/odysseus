@@ -17,7 +17,10 @@ from src.prompt_security import untrusted_context_message
 
 logger = logging.getLogger(__name__)
 
-RECALL_LIMIT = 5
+# How many Memories a turn may draw on. Five was too few against a corpus of a
+# few hundred: a question like "roughly how many fish do I have" needs the
+# whole stocking list, and five slots got spent on incidental matches.
+RECALL_LIMIT = 12
 
 
 def build_greenhouse_provider():

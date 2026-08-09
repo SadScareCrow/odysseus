@@ -164,7 +164,12 @@ class GreenhouseMemoryProvider(MemoryProvider):
         genuinely knowing nothing.
         """
         response = await self._send(
-            "GET", "/v1/memories/search", params={"q": query, "limit": top_k}
+            "GET",
+            "/v1/memories/search",
+            # Ask for the whole subject when the question clearly has one. Word
+            # matching cannot get from "how many fish" to "One giant gourami.",
+            # and the model on the other end can.
+            params={"q": query, "limit": top_k, "expand_area": "true"},
         )
         if response is None or response.status_code >= 400:
             return []

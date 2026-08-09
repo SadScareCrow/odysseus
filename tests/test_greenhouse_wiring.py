@@ -100,7 +100,9 @@ def test_recall_message_carries_memories_and_attribution():
     assert "Sicce Syncra 3.0" in content
     assert "aquariums" in content
     assert "fact" in content
-    assert provider.calls == [("what pump do I run?", 5)]
+    from src.greenhouse_wiring import RECALL_LIMIT
+
+    assert provider.calls == [("what pump do I run?", RECALL_LIMIT)]
 
 
 def test_recall_message_is_untrusted_context_not_a_system_message():
