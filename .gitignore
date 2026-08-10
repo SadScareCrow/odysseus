@@ -102,3 +102,6 @@ compound.config.json
 *.error.log
 _scratch/
 /odysseus/
+
+# Card-workflow worktrees; checkouts of other branches, never content.
+.worktrees/
