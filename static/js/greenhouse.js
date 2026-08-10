@@ -63,7 +63,10 @@ function visibleMemories() {
   else if (state.selected && state.selected !== '__all__') memories = source.filter((memory) => areaKey(memory) === state.selected);
   if (state.query) {
     const query = state.query.toLowerCase();
-    memories = memories.filter((memory) => JSON.stringify(memory).toLowerCase().includes(query));
+    // Match what is on screen, not the whole record. Stringifying the object
+    // searched ids and timestamps too, so a typed uuid fragment "matched".
+    memories = memories.filter((memory) =>
+      String(memory.content ?? memory.text ?? memory.presentation ?? '').toLowerCase().includes(query));
   }
   return memories;
 }

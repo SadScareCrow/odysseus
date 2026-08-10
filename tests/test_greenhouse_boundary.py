@@ -40,7 +40,22 @@ _CONSTRUCTION = re.compile(r"\bMemoryManager\s*\(")
 # Everything shipped, not a hand-picked list. The first version of this guard
 # named five directories and missed `mcp_servers/`, which contains a live
 # durable writer -- exactly the blind spot the guard exists to remove.
-_NOT_SHIPPED = {".venv", "venv", "node_modules", "__pycache__", "tests", "docs", "licenses"}
+# `.worktrees` holds checkouts of OTHER branches, created by the card workflow.
+# Scanning them makes this guard report on code that is not this working tree --
+# a card worktree containing an allowlisted file fails the allowlist, because
+# the path no longer matches. Excluding them keeps the guard about what ships
+# from HERE while leaving the "everything except an exclusion list" strategy
+# intact, which is what caught mcp_servers/ in the first place.
+_NOT_SHIPPED = {
+    ".venv",
+    "venv",
+    "node_modules",
+    "__pycache__",
+    "tests",
+    "docs",
+    "licenses",
+    ".worktrees",
+}
 
 
 def _python_files():
