@@ -19,6 +19,7 @@ import markdownModule from './js/markdown.js';
 import chatRenderer from './js/chatRenderer.js?v=20260722emailfastindex1';
 import sessionModule from './js/sessions.js?v=20260722ctxheader4';
 import memoryModule from './js/memory.js?v=20260722memoryloading1';
+import greenhouseModule from './js/greenhouse.js';
 import voiceRecorderModule from './js/voiceRecorder.js';
 import censorModule from './js/censor.js';
 import galleryModule from './js/gallery.js';
@@ -1212,6 +1213,7 @@ function initializeEventListeners() {
       setTimeout(_goFullscreen, 200);
     },
     '/memory':   () => document.getElementById('tool-memory-btn')?.click(),
+    '/greenhouse': () => document.getElementById('tool-greenhouse-btn')?.click(),
     '/gallery':  () => document.getElementById('tool-gallery-btn')?.click(),
     '/tasks':    () => document.getElementById('tool-tasks-btn')?.click(),
     '/library':  () => sessionModule && sessionModule.openLibrary && sessionModule.openLibrary(),
@@ -1673,6 +1675,9 @@ function initializeEventListeners() {
       if (memoryModule && memoryModule.updateMemoryCount) memoryModule.updateMemoryCount();
     });
   }
+
+  const toolGreenhouseBtn = el('tool-greenhouse-btn');
+  if (toolGreenhouseBtn) toolGreenhouseBtn.addEventListener('click', () => greenhouseModule.open());
 
   const addMemBtn = el('add-memory-btn');
   if (addMemBtn) {
@@ -3771,6 +3776,7 @@ function startOdysseusApp() {
     'rail-calendar':  'tool-calendar-btn',
     'rail-notes':     'tool-notes-btn',
     'rail-memory':    'tool-memory-btn',
+    'rail-greenhouse': 'tool-greenhouse-btn',
     'rail-theme':     'tool-theme-btn',
     'rail-email':     'email-section-title',
   };
