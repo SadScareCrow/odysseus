@@ -902,6 +902,10 @@ async def serve_email(request: Request):
 async def serve_memory(request: Request):
     return await serve_index(request)
 
+@app.get("/greenhouse")
+async def serve_greenhouse(request: Request):
+    return await serve_index(request)
+
 @app.get("/gallery")
 async def serve_gallery(request: Request):
     return await serve_index(request)
