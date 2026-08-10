@@ -66,8 +66,11 @@ function renderList(memories, title) {
     previousLabels = labelsFor(memory);
     return html;
   }).join('');
-  view.innerHTML = `<div class="greenhouse-view-heading"><strong>${esc(title)}</strong><span style="margin-left:0.35em;">${memories.length}</span></div>` +
+  view.innerHTML = `<button type="button" class="greenhouse-back">← All areas</button>` +
+    `<div class="greenhouse-view-heading"><strong>${esc(title)}</strong><span style="margin-left:0.35em;">${memories.length}</span></div>` +
     (memories.length ? rows : '<p class="greenhouse-empty">No matching Memories.</p>');
+  const backButton = view.querySelector('.greenhouse-back');
+  if (backButton) backButton.addEventListener('click', back);
   bindMemoryRows();
 }
 
@@ -240,11 +243,20 @@ async function load() {
 function open() {
   const modal = el('greenhouse-modal');
   if (!modal) return;
+  // Open on the Areas list every time. Reopening used to resume wherever the
+  // last visit ended, which -- before the list had a back control -- was a
+  // state you could not leave by closing and reopening either.
+  state.selected = null;
+  state.detail = null;
+  state.query = '';
+  const searchField = el('greenhouse-search');
+  if (searchField) searchField.value = '';
   modal.classList.remove('hidden');
   const search = el('greenhouse-search');
   if (search && !search.dataset.bound) { search.dataset.bound = '1'; search.addEventListener('input', () => { state.query = search.value.trim(); renderCurrent(); }); }
   const close = el('close-greenhouse-modal');
   if (close && !close.dataset.bound) { close.dataset.bound = '1'; close.addEventListener('click', () => { if (state.navDismiss) state.navDismiss(); modal.classList.add('hidden'); }); }
+  if (state.memories) renderCurrent();
   load();
 }
 
