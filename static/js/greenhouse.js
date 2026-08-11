@@ -61,10 +61,14 @@ function renderList(memories, title) {
   const view = el('greenhouse-view');
   if (!view) return;
   let previousLabels = null;
+  let previousArea = null;
   const rows = memories.map((memory) => {
+    const area = areaKey(memory) == null ? 'Unfiled' : areaLabel(memory);
+    const areaHeading = title === 'Open' && area !== previousArea ? `<h4 class="greenhouse-area-heading">${esc(area)}</h4>` : '';
+    previousArea = area;
     const html = renderMemory(memory, previousLabels);
     previousLabels = labelsFor(memory);
-    return html;
+    return areaHeading + html;
   }).join('');
   view.innerHTML = `<button type="button" class="greenhouse-back">← All areas</button>` +
     `<div class="greenhouse-view-heading"><strong>${esc(title)}</strong><span style="margin-left:0.35em;">${memories.length}</span></div>` +
@@ -78,9 +82,11 @@ function renderAreas() {
   const view = el('greenhouse-view');
   if (!view) return;
   const all = state.memories || [];
+  const open = all.filter((memory) => memory.open === true);
   const unfiled = all.filter((memory) => areaKey(memory) == null);
   view.innerHTML = `<div class="greenhouse-view-heading"><strong>Areas</strong><span style="margin-left:0.35em;">${state.areas.length}</span></div>` +
     `<button class="greenhouse-area" data-greenhouse-selection="__all__"><span>All</span><b>${all.length}</b></button>` +
+    `<button class="greenhouse-area" data-greenhouse-selection="__open__"><span>Open</span><b>${open.length}</b></button>` +
     `<button class="greenhouse-area" data-greenhouse-selection="__unfiled__"><span>Unfiled</span><b>${unfiled.length}</b></button>` +
     state.areas.map((area) => `<button class="greenhouse-area" data-greenhouse-selection="${esc(area.key)}"><span>${esc(area.label)}</span><b>${area.count}</b></button>`).join('');
   view.querySelectorAll('[data-greenhouse-selection]').forEach((button) => {
@@ -91,7 +97,8 @@ function renderAreas() {
 function visibleMemories() {
   const source = state.memories || [];
   let memories = source;
-  if (state.selected === '__unfiled__') memories = source.filter((memory) => areaKey(memory) == null);
+  if (state.selected === '__open__') memories = source.filter((memory) => memory.open === true);
+  else if (state.selected === '__unfiled__') memories = source.filter((memory) => areaKey(memory) == null);
   else if (state.selected && state.selected !== '__all__') memories = source.filter((memory) => areaKey(memory) === state.selected);
   if (state.query) {
     const query = state.query.toLowerCase();
@@ -103,7 +110,7 @@ function visibleMemories() {
 function renderCurrent() {
   if (state.detail) return renderDetail(state.detail);
   if (!state.memories) return renderAreas();
-  const title = state.selected === '__all__' ? 'All' : state.selected === '__unfiled__' ? 'Unfiled' :
+  const title = state.selected === '__all__' ? 'All' : state.selected === '__open__' ? 'Open' : state.selected === '__unfiled__' ? 'Unfiled' :
     state.areas.find((area) => area.key === state.selected)?.label || 'Areas';
   if (state.selected == null && !state.query) return renderAreas();
   renderList(visibleMemories(), state.query ? `Search: ${state.query}` : title);
