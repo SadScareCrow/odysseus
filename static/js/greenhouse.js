@@ -1,7 +1,8 @@
 import uiModule from './ui.js';
 import { registerMenuDismiss } from './escMenuStack.js';
 
-const ENDPOINT = '/api/greenhouse/v1/memories?limit=500';
+const ENDPOINT = '/api/greenhouse/v1/memories';
+// Each request is one page of the former v1/memories?limit=500 endpoint.
 const state = {
   memories: null,
   areas: [],
@@ -229,13 +230,22 @@ async function load() {
   state.error = null;
   showStatus('Loading Greenhouse…');
   try {
-    const response = await fetch(ENDPOINT);
-    if (!response.ok) {
-      if (response.status === 404) throw new Error('Greenhouse is not configured.');
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const payload = await response.json();
-    state.memories = payload.memories || [];
+    const memories = [];
+    let cursor = null;
+    do {
+      const url = new URL(ENDPOINT, window.location.origin);
+      url.searchParams.set('limit', '500');
+      if (cursor) url.searchParams.set('cursor', cursor);
+      const response = await fetch(url);
+      if (!response.ok) {
+        if (response.status === 404) throw new Error('Greenhouse is not configured.');
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const payload = await response.json();
+      memories.push(...(payload.memories || []));
+      cursor = payload.next_cursor || null;
+    } while (cursor);
+    state.memories = memories;
     const seen = new Map();
     state.memories.forEach((memory) => { const key = areaKey(memory); if (key != null && !seen.has(key)) seen.set(key, { key, label: areaLabel(memory), count: 0 }); });
     state.memories.forEach((memory) => { const area = seen.get(areaKey(memory)); if (area) area.count += 1; });
