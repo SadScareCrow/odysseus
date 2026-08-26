@@ -38,7 +38,16 @@ python-dateutil
 caldav
 cryptography
 bcrypt
-mcp
+# Pinned below 2.0. The four built-in stdio servers in mcp_servers/ are written
+# against the low-level decorator API (`@server.list_tools()`,
+# `@server.call_tool()`), and mcp 2.x removed both from `mcp.server.Server`.
+# 2.x also renamed the client transport `streamablehttp_client` (used by
+# src/mcp_manager.py) to `streamable_http_client`. A bare `mcp` resolved to
+# 2.1.1 on a 2026-08-25 rebuild and every built-in server died at import with
+# `AttributeError: 'Server' object has no attribute 'list_tools'`. 1.29.1 is the
+# last 1.x release and still exposes all of it. Lift this only together with a
+# port of mcp_servers/*.py and the mcp_manager transports to the 2.x API.
+mcp>=1.29.1,<2
 pyotp
 qrcode[pil]
 croniter
