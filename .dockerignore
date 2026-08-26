@@ -23,6 +23,10 @@ secrets.env~
 /data/
 /logs/
 .git/
+# Card workspaces. `.git/` was already ignored but these were not, so `COPY . .`
+# baked four checkouts of the whole tree (528 MB) into the image, and the
+# entrypoint's recursive chown walked all of them on every container start.
+.worktrees/
 .claude/
 .playwright-mcp/
 .pytest_cache/
