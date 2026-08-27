@@ -74,9 +74,13 @@ WORKDIR /app
 # Install Python deps first (layer cache). Optional extras (PyMuPDF AGPL, etc.)
 # are opt-in so the default image stays MIT-core; see requirements-optional.txt.
 ARG INSTALL_OPTIONAL=false
-COPY requirements.txt requirements-optional.txt ./
-RUN pip install --no-cache-dir -r requirements.txt \
-    && if [ "$INSTALL_OPTIONAL" = "true" ]; then pip install --no-cache-dir -r requirements-optional.txt; fi
+COPY requirements.txt requirements-optional.txt constraints.txt ./
+# -c constraints.txt pins the whole resolution, direct and transitive. Most of
+# requirements.txt is unversioned, so without it a rebuild installs whatever PyPI
+# serves that day -- which is how mcp 2.1.1 silently broke the built-in MCP
+# servers. See the header in constraints.txt to regenerate it.
+RUN pip install --no-cache-dir -c constraints.txt -r requirements.txt \
+    && if [ "$INSTALL_OPTIONAL" = "true" ]; then pip install --no-cache-dir -c constraints.txt -r requirements-optional.txt; fi
 
 # python-magic powers content-based MIME sniffing in src/upload_handler.py.
 # Image-only (not in requirements.txt) because it needs the libmagic1 system
