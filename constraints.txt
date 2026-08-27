@@ -1,0 +1,131 @@
+# Locked resolution of every Python package in the runtime image.
+#
+# WHY THIS FILE EXISTS
+# --------------------
+# requirements.txt lists most of its packages by bare name, with no version.
+# A bare name means "whatever PyPI is serving on the day you build", so two
+# builds of the same commit produce different images. On 2026-08-25 a rebuild
+# picked up mcp 2.1.1 (published three hours earlier), whose Server class had
+# dropped list_tools() and renamed streamablehttp_client. Four built-in MCP
+# servers and every remote HTTP MCP server stopped working, from a rebuild
+# that was only meant to ship an unrelated UI fix.
+#
+# This file pins the full resolution — direct and transitive — so a rebuild
+# reproduces the set that is known to work rather than re-rolling the dice.
+# It constrains only the requirements.txt/-optional.txt install in Dockerfile;
+# the patched Real-ESRGAN wheels install with --no-deps in their own layer and
+# are deliberately absent here.
+#
+# HOW TO REGENERATE
+# -----------------
+# Only from an image whose servers have been verified to actually start:
+#
+#   docker run --rm --entrypoint pip odysseus-odysseus:latest freeze \
+#     | grep -v ' @ file://' > constraints.txt
+#
+# then restore this header. Do not hand-edit a version to move it forward:
+# raise the bound in requirements.txt, rebuild, verify, and re-freeze.
+#
+# Captured from odysseus-odysseus:latest, built 2026-08-25, verified by a real
+# stdio initialize + list_tools handshake against all four built-in servers.
+annotated-doc==0.0.5
+annotated-types==0.8.0
+anyio==4.14.2
+attrs==26.1.0
+bcrypt==5.0.0
+beautifulsoup4==4.15.0
+caldav==3.2.1
+certifi==2026.7.22
+cffi==2.1.1
+charset-normalizer==3.5.1
+chromadb-client==1.5.9
+click==8.4.2
+croniter==6.2.4
+cryptography==50.0.1
+defusedxml==0.7.1
+dnspython==2.8.0
+fastapi==0.141.1
+fastembed==0.8.0
+filelock==3.32.4
+flatbuffers==25.12.19
+fsspec==2026.7.0
+googleapis-common-protos==1.75.2
+greenlet==3.5.5
+grpcio==1.83.0
+h11==0.16.0
+hf-xet==1.6.0
+httpcore==1.0.9
+httpcore2==2.12.0
+httpx==0.28.1
+httpx-sse==0.4.3
+httpx2==2.12.0
+huggingface_hub==1.28.0
+icalendar==7.3.0
+icalendar-searcher==1.0.6
+idna==3.19
+iniconfig==2.3.0
+jh2==5.0.13
+jsonschema==4.26.0
+jsonschema-specifications==2025.9.1
+loguru==0.7.3
+lxml==6.1.2
+Markdown==3.10.3
+mcp==1.29.1
+mmh3==5.2.1
+nh3==0.3.7
+niquests==3.21.0
+numpy==2.5.2
+onnxruntime==1.29.0
+opentelemetry-api==1.44.0
+opentelemetry-exporter-otlp-proto-common==1.44.0
+opentelemetry-exporter-otlp-proto-grpc==1.44.0
+opentelemetry-proto==1.44.0
+opentelemetry-sdk==1.44.0
+opentelemetry-semantic-conventions==0.65b0
+orjson==3.12.0
+overrides==7.7.0
+packaging==26.3
+pillow==12.3.0
+pluggy==1.6.0
+protobuf==7.36.0
+py_rust_stemmers==0.1.8
+pybase64==1.5.0
+pycparser==3.0
+pydantic==2.13.4
+pydantic-settings==2.15.0
+pydantic_core==2.46.4
+Pygments==2.21.0
+PyJWT==2.13.0
+PyOTP==2.10.0
+pypdf==6.16.2
+pytest==9.1.1
+pytest-asyncio==1.4.0
+python-dateutil==2.9.0.post0
+python-dotenv==1.2.3
+python-magic==0.4.27
+python-multipart==0.0.32
+PyYAML==6.0.3
+qh3==1.9.4
+qrcode==8.2
+recurring-ical-events==3.8.2
+referencing==0.37.0
+requests==2.34.2
+rpds-py==2026.6.3
+six==1.17.0
+soupsieve==2.9.2
+SQLAlchemy==2.0.52
+sse-starlette==3.4.8
+starlette==1.6.0
+tenacity==9.1.4
+tokenizers==0.23.1
+tqdm==4.70.0
+truststore==0.10.4
+typing-inspection==0.4.4
+typing_extensions==4.16.0
+tzdata==2026.3
+urllib3==2.7.0
+urllib3-future==2.24.904
+uvicorn==0.52.4
+wassima==2.1.3
+x-wr-timezone==2.0.1
+youtube-transcript-api==1.2.4
